@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CAW Names — QL1</title>
+<meta name="description" content="Directory of every CAW name minted on QL1. Read directly from the CawName contract at load time: digit-first alphabetical order, searchable, filterable by name length (8+ grouped). A read-only community tool." />
+<style>
+  :root{ --bg:#ffffff; --fg:#16181d; --mut:#5b6472; --card:#f4f6f9; --line:#e2e7ee; --acc:#1f6dff; }
+  html[data-theme="black"]{ --bg:#0d1015; --fg:#eef1f6; --mut:#9aa5b4; --card:#161b23; --line:#262e3b; --acc:#6ea8ff; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--bg); color:var(--fg); font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP",sans-serif; }
+  .wrap{ max-width:860px; margin:0 auto; padding:28px 18px 56px; }
+  header{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+  h1{ font-size:26px; margin:0 0 6px; }
+  .sub{ color:var(--mut); font-size:14px; line-height:1.55; margin:0 0 4px; }
+  .tools{ display:flex; gap:8px; flex-shrink:0; }
+  button.tgl{ background:var(--card); color:var(--fg); border:1px solid var(--line); border-radius:999px; padding:6px 13px; font-size:13px; cursor:pointer; }
+  .bar{ display:flex; gap:10px; margin:20px 0 8px; }
+  #q{ flex:1; padding:11px 14px; font-size:16px; border:1px solid var(--line); border-radius:12px; background:var(--card); color:var(--fg); }
+  #reload{ padding:11px 16px; font-size:14px; border-radius:12px; border:1px solid var(--line); background:var(--card); color:var(--fg); cursor:pointer; }
+  .meta{ color:var(--mut); font-size:13px; margin:6px 2px 14px; line-height:1.5; }
+  .chips{ display:flex; flex-wrap:wrap; gap:6px; margin:2px 0 12px; }
+  .chip{ padding:5px 12px; border-radius:999px; border:1px solid var(--line); background:var(--card); color:var(--fg); font-size:13px; cursor:pointer; }
+  .chip.on{ background:var(--acc); color:#fff; border-color:var(--acc); }
+  .row{ display:flex; align-items:center; gap:12px; padding:12px 14px; border:1px solid var(--line); border-radius:12px; margin-bottom:8px; background:var(--card); }
+  .nm{ font-weight:700; font-size:17px; word-break:break-all; }
+  .id{ color:var(--mut); font-size:13px; white-space:nowrap; }
+  .own{ margin-left:auto; font-size:13px; white-space:nowrap; }
+  .own a{ color:var(--acc); text-decoration:none; font-family:ui-monospace,Menlo,monospace; }
+  .empty,.err{ color:var(--mut); padding:26px 10px; text-align:center; font-size:14px; line-height:1.6; }
+  .err{ color:#d24545; }
+  footer{ margin-top:34px; color:var(--mut); font-size:13px; line-height:1.7; border-top:1px solid var(--line); padding-top:16px; }
+  footer a{ color:var(--acc); text-decoration:none; }
+  code{ font-family:ui-monospace,Menlo,monospace; font-size:12px; word-break:break-all; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1 id="t-title">CAW Names — QL1</h1>
+      <p class="sub" id="t-sub"></p>
+      <p class="sub" id="t-note"></p>
+    </div>
+    <div class="tools">
+      <button class="tgl" id="langBtn">日本語</button>
+      <button class="tgl" id="themeBtn">🌙</button>
+    </div>
+  </header>
+
+  <div class="bar">
+    <input id="q" type="search" autocomplete="off" spellcheck="false" />
+    <button id="reload"></button>
+  </div>
+  <div class="chips" id="chips"></div>
+  <div class="meta" id="meta"></div>
+  <div id="list"></div>
+  <div class="empty" id="empty" hidden></div>
+  <div class="err" id="err" hidden></div>
+
+  <footer id="t-foot"></footer>
+</div>
+
+<script>
+"use strict";
+// ---- config ----
+var CAWNAME = "0x864f08Af11F6DC2c0De42562e4664d4f033D393f"; // CawName (QL1, chain id 766)
+var RPCS = [
+  "https://evm-rpc-ql1.mschihuahua.org",
+  "https://scan.qom.network/api/eth-rpc"
+];
+var SEL = { totalSupply: "0x18160ddd", usernames: "0x136dd963", ownerOf: "0x6352211e" };
+var BATCH_IDS = 120;
+
+// ---- i18n ----
+var STR = {
+  en: {
+    title: "CAW Names — QL1",
+    sub: "Every CAW name minted on QL1 — read directly from the CawName contract. Names starting with a digit come first, then alphabetical; filter by length if you like.",
+    note: "A read-only community tool. It stores nothing and edits nothing.",
+    searchPh: "Search names…",
+    reload: "Reload",
+    loading: "Reading from the contract…",
+    progress: function(done, total){ return "Reading from the contract… " + done.toLocaleString("en-US") + " / " + total.toLocaleString("en-US"); },
+    count: function(n){ return n + (n === 1 ? " name" : " names"); },
+    asOf: function(block, time){ return "Read at block " + block.toLocaleString("en-US") + " · " + time + " · Source: the CawName contract itself."; },
+    noMatch: "No names match your search.",
+    noNames: "No names have been minted yet.",
+    failed: "Could not read the contract from any public RPC. Please try Reload in a moment.",
+    owner: "owner",
+    allLen: "All lengths",
+    foot: 'Contract: <code>' + CAWNAME + '</code> (QL1, chain id 766). A name is fixed at mint and never changes; name #N is stored at position N−1 of the contract\u2019s public name list, and ownership is the standard ERC-721 owner record. See also the <a href="https://ql1-infinite42-guppy-histoire.github.io/caw-intro-jp/">CAW intro site (Japanese)</a> and the <a href="https://ql1-infinite42-guppy-histoire.github.io/guppys-guide-dashboard/">Guppy\u2019s Guide dashboard</a>. Developed by the community.'
+  },
+  ja: {
+    title: "CAW 名前一覧（QL1版）",
+    sub: "QL1 で発行された CAW の名前の全一覧。CawName コントラクトから直接読み取り、数字で始まる名前を先に、続いてアルファベット順に並べています。文字数での絞り込みもできます。",
+    note: "コミュニティによる読み取り専用ツールです。何も保存せず、何も編集しません。",
+    searchPh: "名前を検索…",
+    reload: "再読み込み",
+    loading: "コントラクトから読み取り中…",
+    progress: function(done, total){ return "コントラクトから読み取り中… " + done.toLocaleString("ja-JP") + " / " + total.toLocaleString("ja-JP"); },
+    count: function(n){ return n + " 件の名前"; },
+    asOf: function(block, time){ return "読み取り時点：ブロック " + block.toLocaleString("ja-JP") + " · " + time + " · 出典は CawName コントラクトそのもの。"; },
+    noMatch: "検索に一致する名前はありません。",
+    noNames: "まだ名前は発行されていません。",
+    failed: "公開 RPC のいずれからもコントラクトを読めませんでした。少し待って再読み込みしてください。",
+    owner: "所有者",
+    allLen: "すべての文字数",
+    foot: 'コントラクト：<code>' + CAWNAME + '</code>（QL1、チェーン ID 766）。名前は発行時に固定され、変わりません。名前 #N はコントラクトの公開名前リストの N−1 番目に記録され、所有者は標準の ERC-721 所有記録です。あわせて<a href="https://ql1-infinite42-guppy-histoire.github.io/caw-intro-jp/">CAW 紹介サイト</a>と<a href="https://ql1-infinite42-guppy-histoire.github.io/guppys-guide-dashboard/">Guppy\u2019s Guide ダッシュボード</a>もご覧ください。コミュニティによる開発です。'
+  }
+};
+var lang = localStorage.getItem("ql1caw-names-lang") || "en";
+if (!STR[lang]) lang = "en";
+function S(){ return STR[lang]; }
+function applyLang(){
+  var s = S();
+  document.documentElement.lang = lang;
+  document.getElementById("t-title").textContent = s.title;
+  document.getElementById("t-sub").textContent = s.sub;
+  document.getElementById("t-note").textContent = s.note;
+  document.getElementById("q").placeholder = s.searchPh;
+  document.getElementById("reload").textContent = s.reload;
+  document.getElementById("t-foot").innerHTML = s.foot;
+  document.getElementById("langBtn").textContent = lang === "en" ? "日本語" : "English";
+  buildChips();
+  render();
+}
+document.getElementById("langBtn").onclick = function(){
+  lang = lang === "en" ? "ja" : "en";
+  localStorage.setItem("ql1caw-names-lang", lang);
+  applyLang();
+};
+// ---- theme ----
+var theme = localStorage.getItem("guppy-theme") || "white";
+function applyTheme(){
+  document.documentElement.dataset.theme = theme === "black" ? "black" : "white";
+  document.getElementById("themeBtn").textContent = theme === "black" ? "☀️" : "🌙";
+}
+document.getElementById("themeBtn").onclick = function(){
+  theme = theme === "black" ? "white" : "black";
+  localStorage.setItem("guppy-theme", theme);
+  applyTheme();
+};
+applyTheme();
+
+// ---- minimal JSON-RPC ----
+function rpcBatch(rpc, calls){
+  var payload = calls.map(function(c, i){ return { jsonrpc: "2.0", id: i + 1, method: "eth_call", params: [{ to: CAWNAME, data: c }, "latest"] }; });
+  return fetch(rpc, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) })
+    .then(function(r){ if (!r.ok) throw new Error("http " + r.status); return r.json(); })
+    .then(function(arr){
+      if (!Array.isArray(arr)) throw new Error("not a batch response");
+      var out = new Array(calls.length);
+      arr.forEach(function(x){ if (x.error) throw new Error("rpc error"); out[x.id - 1] = x.result; });
+      return out;
+    });
+}
+function rpcSingle(rpc, method, params){
+  return fetch(rpc, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: method, params: params }) })
+    .then(function(r){ if (!r.ok) throw new Error("http " + r.status); return r.json(); })
+    .then(function(x){ if (x.error) throw new Error("rpc error"); return x.result; });
+}
+function pad32(n){ var h = n.toString(16); while (h.length < 64) h = "0" + h; return h; }
+function decAddr(hex){ return "0x" + hex.slice(-40); }
+function decUint(hex){ return parseInt(hex.slice(0, 66), 16); }
+function decStr(hex){
+  var b = hex.slice(2);
+  var len = parseInt(b.slice(64, 128), 16);
+  var data = b.slice(128, 128 + len * 2);
+  var bytes = [];
+  for (var i = 0; i < data.length; i += 2) bytes.push(parseInt(data.slice(i, i + 2), 16));
+  return new TextDecoder("utf-8").decode(new Uint8Array(bytes));
+}
+
+var DATA = null; // [{id, name, owner}]
+var BLOCK = null;
+
+function loadFrom(rpc){
+  return rpcSingle(rpc, "eth_blockNumber", []).then(function(bn){
+    return rpcBatch(rpc, [SEL.totalSupply]).then(function(r0){
+      var supply = decUint(r0[0]);
+      var rows = [];
+      var chain = Promise.resolve();
+      for (var from = 1; from <= supply; from += BATCH_IDS){
+        (function(from){
+          chain = chain.then(function(){
+            var to = Math.min(from + BATCH_IDS - 1, supply);
+            var calls = [];
+            for (var id = from; id <= to; id++){
+              calls.push(SEL.usernames + pad32(id - 1)); // name of tokenId id lives at usernames(id-1)
+              calls.push(SEL.ownerOf + pad32(id));
+            }
+            return rpcBatch(rpc, calls).then(function(res){
+              for (var j = 0; j < res.length / 2; j++){
+                rows.push({ id: from + j, name: decStr(res[2 * j]), owner: decAddr(res[2 * j + 1]) });
+              }
+              document.getElementById("meta").textContent = S().progress(rows.length, supply);
+            });
+          });
+        })(from);
+      }
+      return chain.then(function(){ BLOCK = parseInt(bn, 16); return rows; });
+    });
+  });
+}
+function load(){
+  document.getElementById("err").hidden = true;
+  document.getElementById("meta").textContent = S().loading;
+  var chain = Promise.reject(new Error("start"));
+  RPCS.forEach(function(rpc){ chain = chain.catch(function(){ return loadFrom(rpc); }); });
+  chain.then(function(rows){
+    DATA = rows;
+    buildChips();
+    render();
+  }).catch(function(){
+    DATA = null;
+    document.getElementById("meta").textContent = "";
+    var e = document.getElementById("err");
+    e.textContent = S().failed;
+    e.hidden = false;
+    document.getElementById("list").innerHTML = "";
+  });
+}
+
+var LENF = null; // null = all lengths; otherwise 1..7 or "8+"
+function lenGroup(name){ var n = Array.from(name).length; return n >= 8 ? "8+" : n; }
+function cmpName(a, b){
+  var an = a.name.toLowerCase(), bn = b.name.toLowerCase();
+  var ad = an.charAt(0) >= "0" && an.charAt(0) <= "9" ? 0 : 1;
+  var bd = bn.charAt(0) >= "0" && bn.charAt(0) <= "9" ? 0 : 1;
+  if (ad !== bd) return ad - bd;
+  if (an < bn) return -1; if (an > bn) return 1; return a.id - b.id;
+}
+function buildChips(){
+  var box = document.getElementById("chips");
+  if (!DATA) { box.innerHTML = ""; return; }
+  var counts = {};
+  DATA.forEach(function(r){ var g = lenGroup(r.name); counts[g] = (counts[g] || 0) + 1; });
+  var groups = [null, 1, 2, 3, 4, 5, 6, 7, "8+"];
+  box.innerHTML = groups.map(function(g){
+    var label = g === null ? S().allLen : (g === "8+" ? "8+" : String(g));
+    var n = g === null ? DATA.length : (counts[g] || 0);
+    if (g !== null && !counts[g]) return "";
+    return '<button class="chip' + (LENF === g ? " on" : "") + '" data-g="' + (g === null ? "" : g) + '">' + label + " (" + n + ")</button>";
+  }).join("");
+  Array.prototype.forEach.call(box.querySelectorAll(".chip"), function(btn){
+    btn.onclick = function(){
+      var v = btn.getAttribute("data-g");
+      LENF = v === "" ? null : (v === "8+" ? "8+" : parseInt(v, 10));
+      buildChips(); render();
+    };
+  });
+}
+
+function render(){
+  var s = S();
+  var list = document.getElementById("list");
+  var empty = document.getElementById("empty");
+  if (!DATA) { list.innerHTML = ""; return; }
+  var q = document.getElementById("q").value.trim().toLowerCase();
+  var rows = DATA.slice().sort(cmpName).filter(function(r){
+    if (LENF !== null && lenGroup(r.name) !== LENF) return false;
+    return !q || r.name.toLowerCase().indexOf(q) !== -1;
+  });
+  var time = new Date().toLocaleString(lang === "ja" ? "ja-JP" : "en-GB", { hour12: false });
+  document.getElementById("meta").textContent =
+    s.count(rows.length) + ((q || LENF !== null) ? " / " + s.count(DATA.length) : "") + " · " + (BLOCK ? s.asOf(BLOCK, time) : "");
+  list.innerHTML = rows.map(function(r){
+    var short = r.owner.slice(0, 6) + "…" + r.owner.slice(-4);
+    return '<div class="row"><span class="nm">@' + escapeHtml(r.name) + '</span>' +
+      '<span class="id">#' + r.id + '</span>' +
+      '<span class="own">' + s.owner + ' <a href="https://scan.qom.network/address/' + r.owner + '" target="_blank" rel="noopener">' + short + '</a></span></div>';
+  }).join("");
+  empty.hidden = rows.length > 0;
+  empty.textContent = DATA.length === 0 ? s.noNames : s.noMatch;
+}
+function escapeHtml(t){
+  return t.replace(/[&<>"']/g, function(c){ return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; });
+}
+document.getElementById("q").addEventListener("input", render);
+document.getElementById("reload").onclick = load;
+applyLang();
+load();
+</script>
+</body>
+</html>
